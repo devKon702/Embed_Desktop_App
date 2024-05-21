@@ -2,15 +2,16 @@ import socket
 import struct
 
 class SocketService:
-    def __iniit__(self, ip, port):
+    def __init__(self, ip, port):
         self.ip = ip
         self.port = port
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket = None
 
     def connect(self):
-        self.socket.connect(self.ip, self.port)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((self.ip, self.port))
 
-    def send(self, data):
+    def send_float_arr(self, data):
         data_size = len(data)
     
         # Gửi số lượng phần tử của mảng float
@@ -26,3 +27,5 @@ class SocketService:
         result_float = struct.unpack('f', result)[0]
         return result_float
 
+    def close(self):
+        self.socket.close()

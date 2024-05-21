@@ -11,3 +11,11 @@ def bytes_to_image(image_bytes):
     image_np = np.frombuffer(image_bytes, dtype=np.uint8)
     image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
     return image
+
+def bgr_2_grayscale(image):
+    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+def equalizeHist_filter(image):
+    return cv2.equalizeHist(image)
+
+

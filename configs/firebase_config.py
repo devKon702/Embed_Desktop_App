@@ -8,4 +8,6 @@ firebase_private_key_path = os.path.join(parent_of_parent_path, "firebasePrivate
 
 # Config
 cred = credentials.Certificate(firebase_private_key_path)
-firebase_admin.initialize_app(cred)
+firebase_admin.initialize_app(cred, {
+    'storageBucket': 'embedded-2fcfe.appspot.com'
+})

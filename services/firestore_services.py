@@ -27,7 +27,7 @@ class FirestoreService:
 
             for doc in docs:
                 data = doc.to_dict()
-                data["id"] = doc.id
+                data["docID"] = doc.id
                 result_list.append(data)
         except Exception as e:
             print(f"Lỗi lọc dữ liệu: {e}")
@@ -37,7 +37,7 @@ class FirestoreService:
     def get_by_id(self,id):
         try:
             doc = self.ref.document(id).get()
-            if doc.exists():
+            if doc.exists:
                 return doc.to_dict()
         except Exception as e:
             print(f"Lỗi lấy dữ liệu: {e}")
