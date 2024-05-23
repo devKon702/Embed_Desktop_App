@@ -21,6 +21,16 @@ class SocketService:
         for value in data:
             self.socket.send(struct.pack("f", value))
 
+    def send_int_arr(self, data):
+        data_size = len(data)
+    
+        # Gửi số lượng phần tử của mảng int
+        self.socket.send(struct.pack("H", data_size))
+
+        # Gửi từng phần tử của mảng int
+        for value in data:
+            self.socket.send(struct.pack("i", value))
+
     def recieve(self,data_len):
         # Nhận kết quả từ Arduino
         result = self.socket.recv(data_len)

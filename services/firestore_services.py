@@ -12,7 +12,7 @@ class FirestoreService:
 
             for doc in docs:
                 data = doc.to_dict()
-                data["id"] = doc.id
+                data["docID"] = doc.id
                 result_list.append(data)
             return result_list
         except Exception as e:

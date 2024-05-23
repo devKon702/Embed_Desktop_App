@@ -17,6 +17,10 @@ class StorageService:
         except Exception as e:
             print("Lỗi khi tải hình ảnh từ Storage: ", e)
             return None  
+
+    def dowload_model(self, local_file_name, path):
+        model_blob = self.storage_client.blob(path)
+        model_blob.download_to_filename(local_file_name)
         
     def upload_image(self, image, filename, extension = ".jpg"):
         try:       

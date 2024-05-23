@@ -10,11 +10,14 @@ from services.firestore_services import FirestoreService
 from services.storage_services import StorageService
 from firebase_admin import firestore, messaging
 import constants
-from utils.helpers import bgr_2_grayscale, equalizeHist_filter, image_to_bytes, bytes_to_image
+from utils.helpers import bgr_2_grayscale, equalizeHist_filter, image_to_bytes, bytes_to_image, hex_to_int_array, hex_to_c_array
 
 import time
 from datetime import datetime, timedelta
 import threading
+import os
+import tensorflow as tf
+from tensorflow.keras.models import load_model
 
 root = Tk()
 root.title("Gui")
@@ -40,31 +43,30 @@ faceCascade = cv2.CascadeClassifier(cv2.data.haarcascades + cascPath)
 face_frame = None
 recognite_count = 0 # Dúng đếm số lần nhận diện liên tiếp cùng một người
 last_userID = 0
-isConfirming = False
+is_stop_predicting = False
 
 
-btn_load_model = CustomButton(root, text="Load model")
-btn_load_model.pack(side="bottom",padx=24)
+btn_load_model = CustomButton(root, text="Load model", command=lambda: [handle_load_model()])
+btn_load_model.pack(side="bottom",padx=24, pady=10)
 # Khai báo các service 
-url_connector = UrlService(hostname=constants.ESP32_IP, path="cam-mid.jpg")
-users_firestore = FirestoreService(collectionPath="users")
-predict_socket_connector = SocketService(ip=constants.ESP32_IP, port=constants.PREDICT_PORT)
-attend_storage_connector = StorageService()
+url_connector = UrlService(hostname=constants.ESP32_IP, path=constants.LOW_QUAL_CAM)
+
 
 
 def handle_correct_face(user, image):
-    global isConfirming
+    global is_stop_predicting
     print('correct face handle')
     user_ref = firestore.client().collection("users").document(user["docID"])
     if user_ref.get().exists:
         attendances_ref = user_ref.collection("attendances")
 
-        today = datetime.now().date() - timedelta(days=1)
+        today = datetime.now().date() # - timedelta(days=1)
         formatted_date = today.strftime('%d-%m-%Y')
 
         att_doc_ref = attendances_ref.document(formatted_date)
 
         # Save image
+        attend_storage_connector = StorageService()
         dowload_url = attend_storage_connector.upload_image(image, f"attend/{datetime.now().timestamp()}", ".jpg")
         notify_msg = ""
         # Lưu thông tin chấm công
@@ -73,7 +75,7 @@ def handle_correct_face(user, image):
                 "clockOutTime" : datetime.now().strftime("%H:%M"),
                 "imageClockOut": dowload_url
             })
-            notify_msg = f'{user["firstName"]} {user["lastName"]} vừa check in'
+            notify_msg = f'{user["id"]}?{user["firstName"]} {user["lastName"]} vừa check out'
         else:
             att_doc_ref.set({
                 "clockInTime" : datetime.now().strftime('%H:%M'),
@@ -83,21 +85,19 @@ def handle_correct_face(user, image):
                 "imageClockOut": "",
                 "statbility": 0
             })
-            notify_msg = f'{user["firstName"]} {user["lastName"]} vừa check out'
+            notify_msg = f'{user["id"]}?{user["firstName"]} {user["lastName"]} vừa check in'
 
-    send_message(topic="attendance", title="New Notify", content=notify_msg)
+    send_message(topic="attendance", title="New Notify", body=notify_msg)
         
-    isConfirming = False
+    is_stop_predicting = False
 
-def send_message(topic, title, content):
-    notify = {
-            'title': title,
-            'content': content,
-        }
-
+def send_message(topic, title, body):
     message = messaging.Message(
-            data=notify,
-            topic=topic,
+            notification=messaging.Notification(
+                title=title,
+                body=body
+            ),
+            topic=topic
         )
     # Gửi thông báo đến topic và in ra kết quả
     try:
@@ -108,9 +108,9 @@ def send_message(topic, title, content):
 
 
 def handle_incorrect_face():
-    global isConfirming
+    global is_stop_predicting
     print('incorrect face handle')
-    isConfirming = False
+    is_stop_predicting = False
 
 
 def show_popup(staff, image):
@@ -129,9 +129,51 @@ def show_popup(staff, image):
     button_cancel.pack(side="right", padx=24)
     center_window(custom_messagebox, 400, 190)
 
+def show_notify(msg):
+    custom_messagebox = Toplevel()
+    custom_messagebox.title("Notification")
+    
+    label = Label(custom_messagebox, text=msg, font=("Arial", 16))
+    label.pack(side="top",padx=20, pady=20)
+
+    button_ok = CustomButton(custom_messagebox, text="OK", command=lambda: [custom_messagebox.destroy()])
+    button_ok.pack(side="bottom", padx=24, pady=4)
+
+    center_window(custom_messagebox, 400, 100)
+
+
 
 def handle_load_model():
-    print("Button clicked")
+    global is_stop_predicting
+    print("Button load")
+    is_stop_predicting = True
+    # Lấy file model isSelected
+    model_firestore_connector = FirestoreService("models")
+    models = model_firestore_connector.get_where("isSelected", "==", True)
+    if len(models) == 0:
+        show_notify("Not found selected model")
+        return
+    
+    selected_model = models[0]
+    # Nếu đã nhúng rồi thì không load
+    if selected_model["isEmbedded"] == True:
+        show_notify("Model was embedded")
+        return
+    
+    storage_connector = StorageService()
+    storage_connector.dowload_model("nn_model.h", f'models/{selected_model["docID"]}.h')
+
+    show_notify("Finish loading")
+
+    # # Truyền tflite model đến esp
+    # socket_connector = SocketService(ip=constants.ESP32_IP, port=constants.TRANFER_MODEL_PORT)
+    # socket_connector.connect()
+    # print("Start tranfer")
+    # socket_connector.send_int_arr(hex_to_int_array(tflite_model))
+    # socket_connector.close()
+    
+    is_stop_predicting = False
+
 
 
 def get_face_location(frame):
@@ -142,7 +184,7 @@ def get_face_location(frame):
         frame,
         scaleFactor=1.1,
         minNeighbors=10,
-        minSize=(300, 300)
+        minSize=(150, 150)
     )
     if(len(faces)>0):
         (x,y,w,h) = faces[0]
@@ -156,11 +198,14 @@ def preprocess_before_predict(image, shape):
     return image.flatten()
 
 def recognite():
-    global face_frame, recognite_count, last_userID, isConfirming
+    global face_frame, recognite_count, last_userID, is_stop_predicting
+    predict_socket_connector = SocketService(ip=constants.ESP32_IP, port=constants.PREDICT_PORT)
+    users_firestore = FirestoreService(collectionPath="users")
     while(True):
-        if(face_frame is not None and not isConfirming):
+        if(face_frame is not None and not is_stop_predicting):
+            current_face_frame = face_frame[:]
             
-            face_data = preprocess_before_predict(face_frame, (constants.DATASET_IMAGE_WIDTH, constants.DATASET_IMAGE_HEIGHT))
+            face_data = preprocess_before_predict(current_face_frame, (constants.DATASET_IMAGE_WIDTH, constants.DATASET_IMAGE_HEIGHT))
                 
             predict_socket_connector.connect()
             predict_socket_connector.send_float_arr(data = face_data)
@@ -181,8 +226,8 @@ def recognite():
                 recognite_count = 0
                 last_userID = 0
                 for user in users_firestore.get_where("id", "==", result):
-                    show_popup(user, face_frame[:])
-                    isConfirming = True
+                    show_popup(user, current_face_frame[:])
+                    is_stop_predicting = True
                     break
         # Dừng 2s
         time.sleep(2)
@@ -190,6 +235,7 @@ def recognite():
 
 def process():
     global face_frame
+    # Lấy ảnh từ ESP
     bgr_frame = url_connector.receive()
     # Lấy vị trí khuôn mặt
     (x,y,w,h) = get_face_location(bgr_frame)

@@ -12,17 +12,17 @@ class CustomButton(Button):
             pady=5,
             font=("Arial", 12),
             foreground="white",
-            background="orange",
+            background="#319fe2", cursor=""
         )
         # Bind events
         self.bind("<Enter>", self.on_hover)
         self.bind("<Leave>", self.on_leave)
 
     def on_hover(self, event):
-        self.config(background="lightblue")
+        self.config(background="#73e9fd")
 
     def on_leave(self, event):
-        self.config(background="green")
+        self.config(background="#319fe2")
 
 
 def center_window(window, width, height):
